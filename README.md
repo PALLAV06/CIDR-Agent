@@ -30,17 +30,6 @@ Managing IP address space in large Azure environments is challenging.
 
 ## 🏗️ Architecture
 
-```mermaid
-flowchart TD
-    User[User (Browser)]
-    Streamlit[Streamlit Web UI\nAzure CIDR Agent]
-    AzureAPI[Azure SDK\nNetwork, Resource, Identity]
-    AzureCloud[Azure Subscription(s)]
-    User -->|Web| Streamlit
-    Streamlit -->|REST API| AzureAPI
-    AzureAPI -->|API Calls| AzureCloud
-```
-
 - **Frontend:** Streamlit, custom CSS, Lottie animations
 - **Backend:** Python, Azure SDKs (`azure-identity`, `azure-mgmt-network`, `azure-mgmt-resource`)
 - **Deployment:** Docker, Azure Web App for Containers, GitHub Actions
