@@ -138,6 +138,29 @@ def suggest_subnets_in_vnet(client, vnet_cidr, existing_subnet_cidrs, subnet_net
         return [str(s) for s in possible_subnets[:num_subnets]]
     return []
 
+def find_unused_subnets(client):
+    # Get all NICs and build a set of subnet IDs in use
+    nics = list(client.network_interfaces.list_all())
+    used_subnet_ids = set()
+    for nic in nics:
+        for ipconf in nic.ip_configurations:
+            if ipconf.subnet and ipconf.subnet.id:
+                used_subnet_ids.add(ipconf.subnet.id.lower())
+    # Find all subnets and check if they are unused
+    unused_subnets = []
+    vnets = list(client.virtual_networks.list_all())
+    for vnet in vnets:
+        rg_name = extract_resource_group_from_id(vnet.id)
+        for subnet in client.subnets.list(rg_name, vnet.name):
+            if subnet.id.lower() not in used_subnet_ids:
+                unused_subnets.append({
+                    "VNet Name": vnet.name,
+                    "Subnet Name": subnet.name,
+                    "Subnet CIDR": subnet.address_prefix,
+                    "Resource Group": rg_name
+                })
+    return unused_subnets
+
 # UI: Subscription selection
 st.sidebar.header("Azure Subscription")
 subscriptions = fetch_subscriptions()
@@ -171,11 +194,17 @@ with tab1:
 with tab2:
     st.subheader("Suggestions to Free Up CIDRs")
     unused_vnets = freeup_suggestions(client)
+    unused_subnets = find_unused_subnets(client)
     if unused_vnets:
         st.write("VNets with no subnets (can be deleted to free CIDRs):")
         st.table(unused_vnets)
     else:
         st.success("No unused VNets found. All CIDRs are in use.")
+    if unused_subnets:
+        st.write("Subnets with no connected devices (0 IPs used, can be deleted to free IP space):")
+        st.table(unused_subnets)
+    else:
+        st.success("No unused subnets found. All subnets have connected devices.")
 
 with tab3:
     st.subheader("Suggest Optimal CIDR for New VNet or Subnets in Existing VNet")
