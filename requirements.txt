@@ -1,0 +1,7 @@
+typer
+azure-identity
+azure-mgmt-network
+ipaddress
+rich 
+streamlit 
+azure-mgmt-resource 
