@@ -3,6 +3,6 @@ azure-identity
 azure-mgmt-network
 ipaddress
 rich 
-streamlit 
+streamlit>=1.25.0
 azure-mgmt-resource 
 streamlit-lottie 
