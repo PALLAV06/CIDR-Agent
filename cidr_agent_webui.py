@@ -126,16 +126,16 @@ def cached_fetch_subscriptions():
     return [(sub.subscription_id, sub.display_name) for sub in sub_client.subscriptions.list()]
 
 @st.cache_data(ttl=300)
-def cached_fetch_vnets(client):
-    return list(client.virtual_networks.list_all())
+def cached_fetch_vnets(_client):
+    return list(_client.virtual_networks.list_all())
 
 @st.cache_data(ttl=300)
-def cached_fetch_nics(client):
-    return list(client.network_interfaces.list_all())
+def cached_fetch_nics(_client):
+    return list(_client.network_interfaces.list_all())
 
 @st.cache_data(ttl=300)
-def cached_fetch_subnets(client, rg_name, vnet_name):
-    return list(client.subnets.list(rg_name, vnet_name))
+def cached_fetch_subnets(_client, rg_name, vnet_name):
+    return list(_client.subnets.list(rg_name, vnet_name))
 
 # Add a refresh button
 if st.sidebar.button("Refresh Data"):
