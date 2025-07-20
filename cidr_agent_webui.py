@@ -22,6 +22,15 @@ st.markdown(
     .stApp {
         background-color: #f3f6fb;
     }
+    h1, h2, h3, h4, h5, h6, .stMarkdown, .stText, .stTitle {
+        color: #24292f;
+    }
+    .lottie-container {
+        background: transparent !important;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
     .stButton>button, .stDownloadButton>button {
         background-color: #0078d4;
         color: #fff;
@@ -54,7 +63,14 @@ st.markdown(
         .stApp {
             background-color: #1b1b1b;
         }
+        h1, h2, h3, h4, h5, h6, .stMarkdown, .stText, .stTitle {
+            color: #f3f6fb !important;
+        }
         .stDataFrame, .stTable {
+            background-color: #23272e !important;
+            color: #f3f6fb !important;
+        }
+        .stSidebar {
             background-color: #23272e !important;
             color: #f3f6fb !important;
         }
@@ -89,7 +105,9 @@ def load_lottieurl(url):
 
 lottie_azure = load_lottieurl("https://assets10.lottiefiles.com/packages/lf20_3vbOcw.json")
 
+st.markdown('<div class="lottie-container">', unsafe_allow_html=True)
 st_lottie(lottie_azure, height=120, key="azurecloud")
+st.markdown('</div>', unsafe_allow_html=True)
 
 st.set_page_config(page_title="Azure CIDR Agent", layout="wide")
 st.title("Azure CIDR Agent Dashboard")
@@ -99,20 +117,44 @@ def get_network_client(subscription_id):
     credential = DefaultAzureCredential()
     return NetworkManagementClient(credential, subscription_id)
 
-def fetch_subscriptions():
+# Caching for expensive Azure API calls
+@st.cache_data(ttl=300)
+def cached_fetch_subscriptions():
     from azure.mgmt.resource import SubscriptionClient
     credential = DefaultAzureCredential()
     sub_client = SubscriptionClient(credential)
     return [(sub.subscription_id, sub.display_name) for sub in sub_client.subscriptions.list()]
 
+@st.cache_data(ttl=300)
+def cached_fetch_vnets(client):
+    return list(client.virtual_networks.list_all())
+
+@st.cache_data(ttl=300)
+def cached_fetch_nics(client):
+    return list(client.network_interfaces.list_all())
+
+@st.cache_data(ttl=300)
+def cached_fetch_subnets(client, rg_name, vnet_name):
+    return list(client.subnets.list(rg_name, vnet_name))
+
+# Add a refresh button
+if st.sidebar.button("Refresh Data"):
+    st.cache_data.clear()
+    st.experimental_rerun()
+
+# Use cached functions in place of direct API calls
+
+def fetch_subscriptions():
+    return cached_fetch_subscriptions()
+
 def fetch_vnets_and_subnets(client):
-    vnets = list(client.virtual_networks.list_all())
+    vnets = cached_fetch_vnets(client)
     vnet_data = []
     for vnet in vnets:
         rg_name = extract_resource_group_from_id(vnet.id)
         vnet_name = vnet.name
         vnet_cidrs = vnet.address_space.address_prefixes
-        subnets = list(client.subnets.list(rg_name, vnet_name))
+        subnets = cached_fetch_subnets(client, rg_name, vnet_name)
         for subnet in subnets:
             subnet_cidr = subnet.address_prefix
             subnet_name = subnet.name
@@ -122,7 +164,6 @@ def fetch_vnets_and_subnets(client):
                 total_ips = net.num_addresses
             except Exception:
                 total_ips = None
-            # Used IPs: Not directly available, so set as None (could be fetched with more API calls)
             used_ips = None
             vnet_data.append({
                 "VNet Name": vnet_name,
@@ -136,20 +177,20 @@ def fetch_vnets_and_subnets(client):
 
 def fetch_used_cidrs(client):
     used_cidrs = set()
-    vnets = client.virtual_networks.list_all()
+    vnets = cached_fetch_vnets(client)
     for vnet in vnets:
         used_cidrs.update(vnet.address_space.address_prefixes)
         rg_name = extract_resource_group_from_id(vnet.id)
-        for subnet in client.subnets.list(rg_name, vnet.name):
+        for subnet in cached_fetch_subnets(client, rg_name, vnet.name):
             used_cidrs.add(subnet.address_prefix)
     return used_cidrs
 
 def freeup_suggestions(client):
-    vnets = list(client.virtual_networks.list_all())
+    vnets = cached_fetch_vnets(client)
     unused_vnets = []
     for vnet in vnets:
         rg_name = extract_resource_group_from_id(vnet.id)
-        subnets = list(client.subnets.list(rg_name, vnet.name))
+        subnets = cached_fetch_subnets(client, rg_name, vnet.name)
         if not subnets:
             unused_vnets.append((vnet.name, vnet.address_space.address_prefixes, rg_name))
     return unused_vnets
@@ -204,7 +245,7 @@ def suggest_vnet_cidr(client, subnet_netmask, num_subnets):
     return None, []
 
 def get_vnet_choices(client):
-    vnets = list(client.virtual_networks.list_all())
+    vnets = cached_fetch_vnets(client)
     return [(vnet.name, extract_resource_group_from_id(vnet.id), vnet.address_space.address_prefixes) for vnet in vnets]
 
 def suggest_subnets_in_vnet(client, vnet_cidr, existing_subnet_cidrs, subnet_netmask, num_subnets):
@@ -217,19 +258,17 @@ def suggest_subnets_in_vnet(client, vnet_cidr, existing_subnet_cidrs, subnet_net
     return []
 
 def find_unused_subnets(client):
-    # Get all NICs and build a set of subnet IDs in use
-    nics = list(client.network_interfaces.list_all())
+    nics = cached_fetch_nics(client)
     used_subnet_ids = set()
     for nic in nics:
         for ipconf in nic.ip_configurations:
             if ipconf.subnet and ipconf.subnet.id:
                 used_subnet_ids.add(ipconf.subnet.id.lower())
-    # Find all subnets and check if they are unused
     unused_subnets = []
-    vnets = list(client.virtual_networks.list_all())
+    vnets = cached_fetch_vnets(client)
     for vnet in vnets:
         rg_name = extract_resource_group_from_id(vnet.id)
-        for subnet in client.subnets.list(rg_name, vnet.name):
+        for subnet in cached_fetch_subnets(client, rg_name, vnet.name):
             if subnet.id.lower() not in used_subnet_ids:
                 unused_subnets.append({
                     "VNet Name": vnet.name,
@@ -241,7 +280,8 @@ def find_unused_subnets(client):
 
 # UI: Subscription selection
 st.sidebar.header("Azure Subscription")
-subscriptions = fetch_subscriptions()
+with st.spinner("Loading subscriptions..."):
+    subscriptions = fetch_subscriptions()
 if not subscriptions:
     st.error("No Azure subscriptions found or authentication failed. Please login with Azure CLI or set up your credentials.")
     st.stop()
@@ -256,33 +296,35 @@ client = get_network_client(subscription_id)
 tab1, tab2, tab3 = st.tabs(["Used CIDRs", "Free Up Suggestions", "Suggest CIDR"])
 
 with tab1:
-    st.subheader("VNet and Subnet CIDR Usage Table")
-    vnet_data = fetch_vnets_and_subnets(client)
-    if vnet_data:
-        df = pd.DataFrame(vnet_data)
-        st.dataframe(df, use_container_width=True)
-        st.subheader("Subnet IP Utilization (Total IPs)")
-        chart_df = df[["VNet Name", "Subnet Name", "Total IPs"]].copy()
-        chart_df = chart_df.dropna(subset=["Total IPs"])
-        chart_df["Label"] = chart_df["VNet Name"] + "/" + chart_df["Subnet Name"]
-        st.bar_chart(chart_df.set_index("Label")["Total IPs"])
-    else:
-        st.info("No VNets or subnets found in this subscription.")
+    with st.spinner("Loading VNet and subnet data..."):
+        st.subheader("VNet and Subnet CIDR Usage Table")
+        vnet_data = fetch_vnets_and_subnets(client)
+        if vnet_data:
+            df = pd.DataFrame(vnet_data)
+            st.dataframe(df, use_container_width=True)
+            st.subheader("Subnet IP Utilization (Total IPs)")
+            chart_df = df[["VNet Name", "Subnet Name", "Total IPs"]].copy()
+            chart_df = chart_df.dropna(subset=["Total IPs"])
+            chart_df["Label"] = chart_df["VNet Name"] + "/" + chart_df["Subnet Name"]
+            st.bar_chart(chart_df.set_index("Label")["Total IPs"])
+        else:
+            st.info("No VNets or subnets found in this subscription.")
 
 with tab2:
-    st.subheader("Suggestions to Free Up CIDRs")
-    unused_vnets = freeup_suggestions(client)
-    unused_subnets = find_unused_subnets(client)
-    if unused_vnets:
-        st.write("VNets with no subnets (can be deleted to free CIDRs):")
-        st.table(unused_vnets)
-    else:
-        st.success("No unused VNets found. All CIDRs are in use.")
-    if unused_subnets:
-        st.write("Subnets with no connected devices (0 IPs used, can be deleted to free IP space):")
-        st.table(unused_subnets)
-    else:
-        st.success("No unused subnets found. All subnets have connected devices.")
+    with st.spinner("Loading free up suggestions..."):
+        st.subheader("Suggestions to Free Up CIDRs")
+        unused_vnets = freeup_suggestions(client)
+        unused_subnets = find_unused_subnets(client)
+        if unused_vnets:
+            st.write("VNets with no subnets (can be deleted to free CIDRs):")
+            st.table(unused_vnets)
+        else:
+            st.success("No unused VNets found. All CIDRs are in use.")
+        if unused_subnets:
+            st.write("Subnets with no connected devices (0 IPs used, can be deleted to free IP space):")
+            st.table(unused_subnets)
+        else:
+            st.success("No unused subnets found. All subnets have connected devices.")
 
 with tab3:
     st.subheader("Suggest Optimal CIDR for New VNet or Subnets in Existing VNet")
