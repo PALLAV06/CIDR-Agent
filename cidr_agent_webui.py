@@ -137,11 +137,6 @@ def cached_fetch_nics(_client):
 def cached_fetch_subnets(_client, rg_name, vnet_name):
     return list(_client.subnets.list(rg_name, vnet_name))
 
-# Add a refresh button
-if st.sidebar.button("Refresh Data"):
-    st.cache_data.clear()
-    st.experimental_rerun()
-
 # Use cached functions in place of direct API calls
 
 def fetch_subscriptions():
