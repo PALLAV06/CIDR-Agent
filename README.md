@@ -28,7 +28,25 @@ Managing IP address space in large Azure environments is challenging.
 - **Animations:** Lottie and CSS transitions for a delightful user experience.
 - **One-click Deploy:** Docker and Azure Web App ready, with GitHub Actions CI/CD.
 
-## 🏗️ Architecture
+```mermaid
+flowchart TD
+    User["User (Browser)"]
+    Streamlit["Streamlit Web UI\n(cidra_agent_webui.py)"]
+    AzureSDK["Azure SDKs\n(azure-identity, azure-mgmt-network, azure-mgmt-resource)"]
+    AzureCloud["Azure Subscription(s)\n(VNets, Subnets, NICs)"]
+    Cache["Streamlit Cache\n(@st.cache_data)"]
+    GitHub["GitHub Actions CI/CD"]
+    Docker["Docker Container"]
+    AzureWebApp["Azure Web App for Containers"]
+
+    User-->|HTTP/HTTPS|Streamlit
+    Streamlit-->|API Calls|AzureSDK
+    AzureSDK-->|REST API|AzureCloud
+    Streamlit-->|Cache Results|Cache
+    GitHub-->|Build & Deploy|Docker
+    Docker-->|Deploy|AzureWebApp
+    AzureWebApp-->|Runs|Streamlit
+```
 
 - **Frontend:** Streamlit, custom CSS, Lottie animations
 - **Backend:** Python, Azure SDKs (`azure-identity`, `azure-mgmt-network`, `azure-mgmt-resource`)
