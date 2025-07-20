@@ -33,12 +33,12 @@ Managing IP address space in large Azure environments is challenging.
 ```mermaid
 flowchart TD
     User[User (Browser)]
-    Streamlit[Streamlit Web UI<br/>Azure CIDR Agent]
-    AzureAPI[Azure SDK<br/>Network, Resource, Identity]
+    Streamlit[Streamlit Web UI\nAzure CIDR Agent]
+    AzureAPI[Azure SDK\nNetwork, Resource, Identity]
     AzureCloud[Azure Subscription(s)]
-    User-->|Web|Streamlit
-    Streamlit-->|REST API|AzureAPI
-    AzureAPI-->|API Calls|AzureCloud
+    User -->|Web| Streamlit
+    Streamlit -->|REST API| AzureAPI
+    AzureAPI -->|API Calls| AzureCloud
 ```
 
 - **Frontend:** Streamlit, custom CSS, Lottie animations
